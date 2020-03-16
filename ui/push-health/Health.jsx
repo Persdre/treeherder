@@ -7,6 +7,8 @@ import {
   faExclamationTriangle,
 } from '@fortawesome/free-solid-svg-icons';
 import camelCase from 'lodash/camelCase';
+import keyBy from 'lodash/keyBy';
+import intersection from 'lodash/intersection';
 
 import ErrorMessages from '../shared/ErrorMessages';
 import NotificationList from '../shared/NotificationList';
@@ -33,6 +35,30 @@ import TestMetric from './TestMetric';
 import JobListMetric from './JobListMetric';
 import CommitHistory from './CommitHistory';
 
+const CompareNames = props => {
+  const { name, compare } = props;
+  const both = intersection(
+    Object.keys(compare.parent),
+    Object.keys(compare.self),
+  );
+  return (
+    <div>
+      {both.length ? (
+        <div>
+          <h3>{name}</h3>
+          <div>
+            <h5>Intersection</h5>
+            {both.map(name => (
+              <div key={name}>{name}</div>
+            ))}
+          </div>
+        </div>
+      ) : (
+        <div>{name} has no matches</div>
+      )}
+    </div>
+  );
+};
 export default class Health extends React.PureComponent {
   constructor(props) {
     super(props);
@@ -48,12 +74,16 @@ export default class Health extends React.PureComponent {
       result: null,
       failureMessage: null,
       notifications: [],
-      progressExpanded: true,
-      commitHistoryExpanded: true,
+      progressExpanded: false,
+      commitHistoryExpanded: false,
       lintingExpanded: false,
       buildsExpanded: false,
       testsExpanded: false,
       searchStr: params.get('searchStr') || '',
+      compareTests: { parent: {}, self: {} },
+      compareLinting: { parent: {}, self: {} },
+      compareBuilds: { parent: {}, self: {} },
+      comparing: true,
     };
   }
 
@@ -71,6 +101,7 @@ export default class Health extends React.PureComponent {
       }),
       {},
     );
+
     const repos = await RepositoryModel.getList();
     const currentRepo = repos.find(repoObj => repoObj.name === repo);
 
@@ -98,7 +129,9 @@ export default class Health extends React.PureComponent {
     const { data, failureStatus } = await PushModel.getHealth(repo, revision);
     const newState = !failureStatus ? data : { failureMessage: data };
 
-    this.setState(newState);
+    this.setState(newState, () => {
+      this.compareWithParent();
+    });
     return newState;
   };
 
@@ -155,6 +188,79 @@ export default class Health extends React.PureComponent {
     this.setState({ searchStr });
   };
 
+  getNames = (parent, self) => {
+    return {
+      parent: keyBy(parent, 'testName'),
+      self: keyBy(self, 'testName'),
+    };
+  };
+
+  compareWithParent = async () => {
+    const {
+      metrics: {
+        commitHistory: {
+          details: {
+            parentPushRevision: revision,
+            parentRepository: { name: repo },
+          },
+        },
+      },
+    } = this.state;
+    const { data: parentData, failureStatus } = await PushModel.getHealth(
+      repo,
+      revision,
+    );
+
+    if (failureStatus) {
+      this.setState({ failureMessage: parentData });
+      return;
+    }
+
+    const {
+      metrics: {
+        builds: parentBuilds,
+        linting: parentLinting,
+        tests: {
+          details: { needInvestigation: parentNeedInvestigation },
+        },
+      },
+    } = parentData;
+    const {
+      metrics: {
+        builds,
+        linting,
+        tests: {
+          details: { needInvestigation },
+        },
+      },
+    } = this.state;
+
+    const newState = { comparing: false };
+    if (parentBuilds.details.length && builds.details.length) {
+      // match up builds
+      newState.compareBuilds = this.getNames(
+        parentBuilds.details,
+        builds.details,
+      );
+    }
+    if (parentLinting.details.length && linting.details.length) {
+      newState.compareLinting = this.getNames(
+        parentLinting.details,
+        linting.details,
+      );
+      // match up linting
+    }
+    if (parentNeedInvestigation.length && needInvestigation.length) {
+      newState.compareTests = this.getNames(
+        parentNeedInvestigation,
+        needInvestigation,
+      );
+      console.log(newState.compareTests);
+      // match up tests
+    }
+    this.setState(newState);
+  };
+
   render() {
     const {
       metrics,
@@ -172,6 +278,10 @@ export default class Health extends React.PureComponent {
       testsExpanded,
       searchStr,
       currentRepo,
+      compareTests,
+      compareLinting,
+      compareBuilds,
+      comparing,
     } = this.state;
     const { tests, commitHistory, linting, builds } = metrics;
     const percentComplete = status ? getPercentComplete(status) : 0;
@@ -251,6 +361,10 @@ export default class Health extends React.PureComponent {
             )}
           </Navbar>
         </Navigation>
+        {comparing && <Spinner />}
+        <CompareNames name="Tests" compare={compareTests} />
+        <CompareNames name="Builds" compare={compareBuilds} />
+        <CompareNames name="Linting" compare={compareLinting} />
         <Container fluid className="mt-2 mb-5">
           <NotificationList
             notifications={notifications}

@@ -80,11 +80,13 @@ class CommitHistory extends React.PureComponent {
               {parentPushRevision || parentSha}
             </a>
             {exactMatch && (
-              <PushHealthStatus
-                revision={parentPushRevision}
-                repoName={parentRepository.name}
-                jobCounts={jobCounts}
-              />
+              <span>
+                <PushHealthStatus
+                  revision={parentPushRevision}
+                  repoName={parentRepository.name}
+                  jobCounts={jobCounts}
+                />
+              </span>
             )}
           </Col>
         </div>
