@@ -190,9 +190,18 @@ export default class Health extends React.PureComponent {
 
   getNames = (parent, self) => {
     return {
-      parent: keyBy(parent, 'testName'),
-      self: keyBy(self, 'testName'),
+      parent: keyBy(parent, 'key'),
+      self: keyBy(self, 'key'),
     };
+  };
+
+  tagMatches = compare => {
+    const { parent, self } = compare;
+    const matches = intersection(Object.keys(parent), Object.keys(self));
+
+    matches.forEach(matchKey => {
+      self[matchKey].failedInParent = true;
+    });
   };
 
   compareWithParent = async () => {
@@ -221,7 +230,10 @@ export default class Health extends React.PureComponent {
         builds: parentBuilds,
         linting: parentLinting,
         tests: {
-          details: { needInvestigation: parentNeedInvestigation },
+          details: {
+            needInvestigation: parentNeedInvestigation,
+            intermittent: parentIntermittent,
+          },
         },
       },
     } = parentData;
@@ -238,25 +250,26 @@ export default class Health extends React.PureComponent {
     const newState = { comparing: false };
     if (parentBuilds.details.length && builds.details.length) {
       // match up builds
-      newState.compareBuilds = this.getNames(
-        parentBuilds.details,
-        builds.details,
-      );
+      const compareBuilds = this.getNames(parentBuilds.details, builds.details);
+      this.tagMatches(compareBuilds);
+      newState.compareBuilds = compareBuilds;
     }
     if (parentLinting.details.length && linting.details.length) {
-      newState.compareLinting = this.getNames(
+      const compareLinting = this.getNames(
         parentLinting.details,
         linting.details,
       );
+      this.tagMatches(compareLinting);
+      newState.compareLinting = compareLinting;
       // match up linting
     }
     if (parentNeedInvestigation.length && needInvestigation.length) {
-      newState.compareTests = this.getNames(
-        parentNeedInvestigation,
+      const compareTests = this.getNames(
+        { ...parentNeedInvestigation, ...parentIntermittent },
         needInvestigation,
       );
-      console.log(newState.compareTests);
-      // match up tests
+      this.tagMatches(compareTests);
+      newState.compareTests = compareTests;
     }
     this.setState(newState);
   };
