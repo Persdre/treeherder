@@ -42,7 +42,7 @@ const CompareNames = props => {
     Object.keys(compare.self),
   );
   return (
-    <div>
+    <div className="ml-2">
       {both.length ? (
         <div>
           <h3>{name}</h3>
@@ -374,7 +374,11 @@ export default class Health extends React.PureComponent {
             )}
           </Navbar>
         </Navigation>
-        {comparing && <Spinner />}
+        {comparing && (
+          <h3 className="ml-2">
+            Comparing against parent <Spinner />
+          </h3>
+        )}
         <CompareNames name="Tests" compare={compareTests} />
         <CompareNames name="Builds" compare={compareBuilds} />
         <CompareNames name="Linting" compare={compareLinting} />
